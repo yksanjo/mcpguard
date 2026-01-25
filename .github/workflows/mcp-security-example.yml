@@ -1,0 +1,58 @@
+# Example GitHub Actions workflow for users
+# Copy this to your project's .github/workflows/ directory
+
+name: MCP Security Check
+
+on:
+  push:
+    paths:
+      - '**/claude_desktop_config.json'
+      - '**/.mcp.json'
+      - '**/mcp.json'
+  pull_request:
+    paths:
+      - '**/claude_desktop_config.json'
+      - '**/.mcp.json'
+      - '**/mcp.json'
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run MCPGuard Security Scan
+        run: |
+          # Find all MCP config files
+          configs=$(find . -name "claude_desktop_config.json" -o -name ".mcp.json" -o -name "mcp.json" 2>/dev/null || true)
+
+          if [ -z "$configs" ]; then
+            echo "No MCP config files found"
+            exit 0
+          fi
+
+          # Scan each config
+          exit_code=0
+          for config in $configs; do
+            echo "Scanning: $config"
+            if ! npx mcpguard scan "$config" --fail-on high; then
+              exit_code=1
+            fi
+          done
+
+          exit $exit_code
+
+      - name: Upload SARIF results (optional)
+        if: always()
+        run: |
+          configs=$(find . -name "claude_desktop_config.json" -o -name ".mcp.json" 2>/dev/null | head -1)
+          if [ -n "$configs" ]; then
+            npx mcpguard scan "$configs" --output sarif > results.sarif 2>/dev/null || true
+          fi
+        continue-on-error: true
